@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+
+    <title>Albert</title>
+    <link rel="stylesheet" type="text/css" href="index.css?v3" />
+
+    <script src="http://code.jquery.com/jquery-1.11.3.min.js"></script>
+
+    
+    <script src="https://code.highcharts.com/12.1.0/highcharts.js"></script>
+    <script src="https://code.highcharts.com/12.1.0/highcharts-more.js"></script>
+    <script src="https://code.highcharts.com/12.1.0/modules/exporting.js"></script>
+    <script src="https://code.highcharts.com/12.1.0/modules/export-data.js"></script>
+    <script src="https://code.highcharts.com/12.1.0/modules/accessibility.js"></script>
+
+    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/easeljs@1/lib/easeljs.min.js"></script>
+    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/eventemitter2@6.4.9/lib/eventemitter2.min.js"></script>
+    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/roslib@1/build/roslib.min.js"></script>
+    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/ros2d@0.10.0/build/ros2d.min.js"></script>
+
+
+<script type="text/javascript" type="text/javascript">
+
+    var VoltMeter;
+    var LidarDisplay;
+    var LidareRefresh = true;
+    var LidarZoom = false;
+    var WindRose;
+    var robotMarker = null;
+    var TheMapMode = 'map';
+    var TheMapDir = '/albert_ws/config/maps/';
+    var TheMaxVelocity = null;
+    var gridClient;
+    var viewer;
+    var ImgTimer = null;
+    var CurrentGoal = false;
+
+</script>
+
+<script src="scripts/ros_init.js"> </script>
+<script src="scripts/ros_parameters.js"> </script>
+
+<script type="text/javascript" type="text/javascript">
+
+    
+    function init_body() {
+        // calls to perform after body is created
+
+
+        console.log('Initiating ros2djs.');
+
+        let div = document.getElementById('homemap');
+        let width = div.clientWidth;
+        let height = div.clientHeight;
+
+        viewer = new ROS2D.Viewer({
+                divID : 'homemap',
+                width : width,
+                height : height,
+                context2dOptions: {willReadFrequently: true},
+        });
+        viewer.scene.addEventListener('mousedown', function(event) {
+            
+            // click : display point
+            // shift_click : send goal
+
+            var pos = viewer.scene.globalToRos(event.stageX, event.stageY);
+
+            if (event.nativeEvent.shiftKey === false) {
+                console.log ('Selected point index: ' + event.stageX + ', ' + event.stageY);
+                console.log ('Selected point ros: ' + pos.x + ', ' + pos.y);
+            }
+            else
+            {
+                console.log ('Selected point ros: ' + pos.x + ', ' + pos.y);
+                // pos.y = -pos.y;
+                document.getElementById('TogglelNav').value = 'Cancel Nav';
+                document.getElementById('TogglelNav').style="background-color:#f7afc1"
+                navigate_to (pos.x, pos.y, 0.0);
+            }
+        });
+        
+
+        // Setup the map client.
+        gridClient = new ROS2D.OccupancyGridClient({
+            ros : ros,
+            rootObject : viewer.scene,
+            continuous: true
+        });
+
+        //robotMarker = new ROS2D.NavigationImage({
+        //    size : 0.4,
+            //image: 'file:///Users/olivier/yahboom/www/images/robot.png',
+        //    pulse: true
+        //});
+        robotMarker = new ROS2D.NavigationArrow({
+            //size : 0.25,
+            //strokeSize : 0.05,
+            size : 0.2,
+            strokeSize : 0.2,
+            pulse: true,
+            strokeColor: createjs.Graphics.getRGB(0, 102, 0, 0.65)
+        });
+        gridClient.rootObject.addChild(robotMarker);
+
+        // Scale the canvas to fit to the map
+        gridClient.on('change', function(){
+            viewer.scaleToDimensions(gridClient.currentGrid.width, gridClient.currentGrid.height);
+            viewer.shift(gridClient.currentGrid.pose.position.x, gridClient.currentGrid.pose.position.y);
+        });
+        
+    }
+    
+       
+    $( document ).ready(function() {
+            // When the DOM is ready, but not yet fully displayed
+
+    });
+        
+
+    </script>
+
+    <script src="scripts/charts_creation.js"> </script>
+    <script src="scripts/lidar_display.js"> </script>
+    <script src="scripts/volt_display.js"> </script>
+    <script src="scripts/navigation.js"> </script>
+    <script src="scripts/image_detection.js"> </script>
+
+    <script type="text/javascript" type="text/javascript">
+
+    
+       
+        // Listening to a transform : Create a TF Client
+    var tfClient = new ROSLIB.TFClient({
+        ros: ros,
+        fixedFrame: 'map', // Replace with your fixed frame
+        angularThres: 0.01,
+        transThres: 0.01,
+        rate: 10.0
+    });
+
+    // then Subscribe to a specific transform
+    tfClient.subscribe('base_footprint', function(tf) {
+        TfUpdate('base_footprint', tf);
+    });
+
+    function TfUpdate(frame_id, tf) {
+        if (robotMarker == null)    
+        {
+            return;
+        }
+        if (frame_id == 'base_footprint') {
+            robotMarker.x = tf.translation.x;
+            robotMarker.y = -tf.translation.y;
+            var quaZ = tf.rotation.z;
+            var degreeZ = 0;
+            if( quaZ >= 0 ) {
+                degreeZ = quaZ / 1 * 180
+            } else {
+                degreeZ = (-quaZ) / 1 * 180 + 180
+            };
+            robotMarker.rotation = degreeZ +15;
+        }
+
+    }
+
+
+
+        function do_select_cam (obj, name, snap) {
+            console.log('selected cam ' + obj.value + ' for ' + name + ' with snap ' + snap);
+            canvas = document.getElementById(name);
+            snapLink = document.getElementById(snap);
+
+            if (obj.value == 'usb') {
+                canvas.src = 'http://192.168.1.76:8080/stream?topic=/usb_cam/image_raw';
+                snapLink.onclick = function() { window.open('http://192.168.1.76:8080/snapshot?topic=/usb_cam/image_raw', 'popup', 'width=640,height=480'); 
+                    return false; }
+            } else if (obj.value == 'detection') {
+                canvas.src = 'http://192.168.1.76:5000/video_feed';
+                snapLink.onclick = function() {     
+                    return false; }
+            } else if (obj.value == 'none') {
+                canvas.src = 'file:///Users/olivier/yahboom/www/images/none.jpg';
+                snapLink.onclick = function() {     
+                    return false; }
+            } else
+            {
+                canvas.src = 'http://192.168.1.76:8080/stream?topic=/camera/' + obj.value + '/image_raw';
+                snapLink.onclick = function() { window.open('http://192.168.1.76:8080/snapshot?topic=/camera/' + obj.value + '/image_raw', 'popup', 'width=640,height=480'); 
+                    return false; }
+            }
+            
+        }
+
+        function do_select_detect (obj, name) {
+            console.log('selected model ' + obj.value);
+            label = document.getElementById(name);
+                        
+            label.innerHTML = 'Model : ' + obj.value;
+
+            if (obj.value == 'none') {
+                label = document.getElementById('Detectresult');
+                label.value = 'No detection';
+            }
+            CurrentModel.set(obj.value);
+        }
+
+
+        function do_select_obj_detect (obj, name) {
+            console.log('selected model ' + obj.value);
+            label = document.getElementById(name);
+                        
+            label.innerHTML = 'Model : ' + obj.value;
+
+            if (obj.value == 'none') {
+                label = document.getElementById('ObjDetectresult');
+                label.value = 'No detection';
+            }
+            CurrentObjModel.set(obj.value);
+        }
+
+        function do_cam_snapshot (obj, name) {
+
+        }
+
+        //image file
+        var SaveMapClient = new ROSLIB.Service({
+            ros : ros,
+            name : '/slam_toolbox/save_map',
+            serviceType : 'slam_toolbox_msgs/SaveMap'
+        });
+        var SaveGraphClient = new ROSLIB.Service({
+            ros : ros,
+            name : '/slam_toolbox/serialize_map',
+            serviceType : 'slam_toolbox_msgs/SerializePoseGraph'
+        });
+        var LoadGraphClient = new ROSLIB.Service({
+            ros : ros,
+            name : '/slam_toolbox/deserialize_map',
+            serviceType : 'slam_toolbox_msgs/DeserializePoseGraph'
+        });
+
+        function do_map_save (obj, name) {
+            if (TheMapMode != 'scan') {
+                console.log ("Not in scan mode");
+                return;
+            }
+            label = document.getElementById(name);
+
+            var request = new ROSLIB.ServiceRequest({
+                name: {data: TheMapDir + label.value}
+            });
+            console.log ("saving map to ", TheMapDir + label.value);
+            SaveMapClient.callService(request, function(result) {
+                console.log('Result for service call on '
+                + SaveMapClient.name
+                + ': '
+                + result.sum);
+            });
+            
+            request = new ROSLIB.ServiceRequest({
+                filename: TheMapDir + label.value
+            });
+            console.log ("serializing map to ", TheMapDir + label.value);
+            SaveGraphClient.callService(request, function(result) {
+                console.log('Result for service call on '
+                + SaveGraphClient.name
+                + ': '
+                + result.sum);
+            });
+        }
+
+        function do_map_load (obj, name) {
+            label = document.getElementById(name);
+           
+            if (TheMapMode == 'scan') {
+                request = new ROSLIB.ServiceRequest({
+                filename: TheMapDir + label.value,
+                match_type: 1 // START_AT_FIRST_NODE
+                //initial_pose: {x: 0, y: 0, theta: 0} // {x: -3.7, y: -1.4, theta: 3.14} pour la map de test, mettre 0 sinon
+            });
+            } else
+            {
+                request = new ROSLIB.ServiceRequest({
+                    filename: TheMapDir + label.value,
+                    match_type: 3, // LOCALIZE_AT_POSE
+                    initial_pose: {x: 0, y: 0, theta: 0} // {x: -3.7, y: -1.4, theta: 3.14} pour la map de test, mettre 0 sinon
+                });
+            }
+            console.log ("deserializing map from ", TheMapDir + label.value);
+            LoadGraphClient.callService(request, function(result) {
+                console.log('Result for service call on '
+                + LoadGraphClient.name
+                + ': '
+                + result.sum);
+            });
+        }
+       
+        async function downloadImage(imageSrc, nameOfDownload) {
+            const response = await fetch(imageSrc);
+
+
+            const blobImage = await response.blob();
+            const href = URL.createObjectURL(blobImage);
+
+            const anchorElement = document.createElement('a');
+            anchorElement.href = href;
+            anchorElement.download = nameOfDownload;
+
+            document.body.appendChild(anchorElement);
+            anchorElement.click();
+            document.body.removeChild(anchorElement);
+            window.URL.revokeObjectURL(href);
+        }
+
+        function do_record_img (obj) {
+            if (obj.value == 'Record') {
+                obj.value = 'Stop';
+                obj.style="background-color:#f7afc1"
+
+                //var ImgDir = document.getElementById('ImgRecDir').value;
+                var ImgSaveFreq = document.getElementById('ImgSaveFreq').value;
+                var ImgSource = document.getElementById('CamMenuRec').value;
+                var ImgName = '/I' + Date.now() + '.jpg';
+                var ImgLink;
+
+                if (ImgSource == 'usb') {
+                    ImgLink = 'http://192.168.1.76:8080/snapshot?topic=/usb_cam/image_raw';
+                } else
+                {
+                    ImgLink = 'http://192.168.1.76:8080/snapshot?topic=/camera/' + ImgSource + '/image_raw';
+                }
+                
+                
+                if (ImgSaveFreq == 'Single') {
+                    downloadImage(ImgLink, ImgName)
+                        .then(() => {
+                            console.log('The image has been downloaded');
+                        })
+                        .catch(err => {
+                            console.log('Error downloading image: ', err);
+                        });;
+
+                    obj.value = 'Record';
+                    obj.style="background-color:#ccff99"
+                    return;
+                } else {
+                    ImgTimer = setInterval(function() {
+                        var ImgName = '/I' + Date.now() + '.jpg';
+                        downloadImage(ImgLink, ImgName);
+                    }, ImgSaveFreq * 1000);
+                }
+
+
+            } else {
+                if (ImgTimer) clearInterval(ImgTimer);
+                obj.value = 'Record';
+                obj.style="background-color:#ccff99"
+            }
+            
+        }
+
+        setInterval(function() {  
+            VoltListener.subscribe(function(message) {
+            VoltUpdate(message)
+            });
+        }, 30000); // each 30 seconds large enough
+
+      /*
+      setInterval(function() {  
+        LidarListener.subscribe(function(message) {
+        LidarUpdate(message)
+        });
+      }, 2000); // each 2 seconds 
+      */
+
+    </script>
+
+</head>
+
+<body onload="init_body()">
+    <dialog id="fileDialog">
+        <form method="dialog">
+            <label for="username">File name : </label>
+            <input type="text" id="SaveImageName" value="AlbertImage">
+            <button autofocus type="submit">Save</button>
+        </form>
+    </dialog>
+
+  <div class="grid-container">
+
+    <div class="header grid-item">
+        <h1 style="color:beige;text-align: center;">Albert Work in progress</h1>
+    </div>
+
+    <div class="item-large grid-sub-container"> 
+        <div class="grid-box1 grid-item"  > 
+            <img id="AlbertCam1" src="http://192.168.1.76:8080/stream?topic=/camera/rgb/image_raw" />
+        </div>
+        <div class="grid-box4 grid-item" id="AlbertCamSnapshot" style=" margin: 20 auto" > 
+            <a href="Snapshot" id="Snapshot1"
+                onclick="window.open('http://192.168.1.76:8080/snapshot?topic=/camera/rgb/image_raw', 'popup', 'width=640,height=480'); return false;">
+                Open snapshot in Popup</a>
+        </div>
+        <div class="grid-box2 grid-item" id="AlbertCamMenu" style=" margin: 20 auto" > 
+            <input type="label" value="---" id="Cam1label"/> 
+        </div>
+        <div class="grid-box3 grid-item" id="AlbertCamMenu" style=" margin: 20 auto" > 
+            <select id="CamMenu1" style="background-color:#ccff99" onchange="do_select_cam(this, 'AlbertCam1', 'Snapshot1')"> 
+                <option value="none">None</option>
+                <option value="colored_depth">Depth Cam</option>
+                <option value="rgb" selected>RGB Cam</option>
+                <option value="colored_ir">IR Cam</option>
+                <option value="usb">USB Cam</option>
+                <option value="detection">Detection</option>
+            </select>
+        </div>
+    </div>
+
+    <div class="grid-item">
+        <div class="grid-item" id="AlbertVoltMeter" style="width: 200px; height: 130px; margin: 0 auto"> </div>
+        
+        <div class="grid-item" id="DetectionControl" style="width: 200px; height: 120px; margin: 0 auto"> 
+            <p id="DetectLabel" style="color:beige;text-align: center;">Image Classification Model : none</p>
+            <input type="label" value="No detection" id="Detectresult"/>
+            <select id="DetectMenu" style="background-color:#ccff99" onchange="do_select_detect(this, 'DetectLabel')"> 
+                <option value="none" selected>None</option>
+                <option value="checkpoint-200">checkpoint-200</option>
+            </select>
+        </div>
+
+        <div class="grid-item" id="DetectionControl" style="width: 200px; height: 120px; margin: 0 auto"> 
+            <p id="ObjDetectLabel" style="color:beige;text-align: center;">Object Detection Model : none</p>
+            <input type="label" value="No detection" id="ObjDetectresult"/>
+            <select id="ObjDetectMenu" style="background-color:#ccff99" onchange="do_select_obj_detect(this, 'ObjDetectLabel')"> 
+                <option value="none" selected>None</option>
+                <option value="yolo">YOLO v11</option>
+            </select>
+        </div>
+
+        <div class="grid-item" id="ImgRecording" style="width: 200px; height: 120px; margin: 0 auto"> 
+            <p id="RecordLabel" style="color:beige;text-align: center;">Record Pictures</p>
+            <input type="text" value="./images" id='ImgRecDir'/> 
+            <select id="CamMenuRec" style="background-color:#ccff99"> 
+                <option value="colored_depth">Depth Cam</option>
+                <option value="rgb" selected>RGB Cam</option>
+                <option value="colored_ir">IR Cam</option>
+                <option value="usb">USB Cam</option>
+                <option value="detection">Detection</option>
+            </select><br>
+            <input type="button" id='RecImg' value="Record" style="background-color:#ccff99" onClick="do_record_img(this)"/>
+            <select id="ImgSaveFreq" style="background-color:#ccff99" onchange="do_change_img_freq(this, 'DetectLabel')"> 
+                <option value="Single" selected>Single</option>
+                <option value="1">1s</option>
+                <option value="2">2s</option>
+                <option value="5">5s</option>
+                <option value="10">10s</option>
+            </select>
+        </div>
+    </div>
+
+    <div class="item-large grid-sub-container" id="LidarTab" tab-mode > 
+        <div class="grid-box1 grid-item" id="AlbertLidar" style="width: 500px; height: 300px; margin: 0 auto"> </div>
+        <div class="grid-box4 grid-item" id="AlbertLidarFreeze" style=" margin: 20 auto" > 
+                <input type="button" value="Freeze Display" id="LidarFreeze" style="background-color:#ccff99" onClick="do_lidar_freeze(this)"/> 
+        </div>
+        <div class="grid-box3 grid-item" id="AlbertLidarZoom" style=" margin: 20 auto" > 
+            <input type="button" value="Zoom" id="LidarZoom" style="background-color:#ccff99" onClick="do_lidar_zoom(this)"/> 
+        </div>
+    </div>
+
+    <div class="item-large grid-sub-container active" id="NavTab" tab-mode> 
+        <div class="grid-box1 grid-item" id="AlbertLidar" style="width: 500px; height: 300px; margin: 0 auto">
+            <input type="range" id="NavRange" min="0" max="100" value="70" onChange="do_change_maxvel(this)" class="vertical-range"/> 
+            <br><label for="NavRange" style="color:beige;text-align: center;">Max speed %</label>
+        </div>
+        <div class="grid-box3 grid-item" id="NavNextTarget" style=" margin: 20 auto" > 
+            <label id="NavTargetLabel" style="color:beige;text-align: center"> Next Target : None </label>
+        </div>
+    </div>
+
+    <div class="item-large grid-sub-container"> 
+        <div class="grid-box1 grid-item" > 
+            <img id="AlbertCam2" src="images/none.jpg" />
+        </div>
+        <div class="grid-box4 grid-item" id="AlbertCamSnapshot" style=" margin: 20 auto" > 
+            <a href="Snapshot" id="Snapshot2"
+                onclick="return false;">
+                Open snapshot in Popup</a>
+        </div>
+        <div class="grid-box2 grid-item" id="AlbertCamMenu" style=" margin: 20 auto" > 
+            <input type="label" value="---" id="Cam2label"/> 
+        </div>
+        <div class="grid-box3 grid-item" id="AlbertCamMenu" style=" margin: 20 auto" > 
+            <select id="CamMenu2" style="background-color:#ccff99" onchange="do_select_cam(this, 'AlbertCam2', 'Snapshot2')"> 
+                <option value="none" selected>None</option>
+                <option value="colored_depth">Depth Cam</option>
+                <option value="rgb">RGB Cam</option>
+                <option value="colored_ir">IR Cam</option>
+                <option value="usb">USB Cam</option>
+                <option value="detection">Detection</option>
+            </select>
+        </div>
+    </div>
+
+
+    
+    <div class="item-xlarge grid-sub-container" > 
+        <div class="grid-box1 grid-item" id="homemap" style="height: 480px;"> 
+            
+        </div>
+        <div class="grid-box2 grid-item"  style=" margin: 20 auto" > 
+            <input type="label" value="DefaultMap" id="MapName"/> 
+        </div>
+        <div class="grid-box3 grid-item"  style=" margin: 20 auto" > 
+            <input type="button" value="Save Map" style="background-color:#ccff99" onClick="do_map_save(this, 'MapName')"/> 
+        </div>
+        <div class="grid-box4 grid-item"  style=" margin: 20 auto" > 
+            <input type="button" value="Load Map" style="background-color:#ccff99" onClick="do_map_load(this, 'MapName')"/> 
+        </div>
+        <!--
+        <div class="grid-box5 grid-item"  style=" margin: 20 auto" > 
+            <select id="NavMenu" style="background-color:#ccff99" onchange="do_select_nav(this)"> 
+                <option value="none" selected>Shift Click to Navigate</option>
+                <option value="patrol1">Patrol</option>
+            </select>
+        </div>
+    -->
+        <div class="grid-box6 grid-item"  style=" margin: 20 auto" > 
+            <input type="file" value="Select trip" style="background-color:#ccff99" 
+            id='NavFile' accept="trip*" onChange="do_select_trip(this, 'TogglelNav')"/> 
+        </div>
+        <div class="grid-box7 grid-item"  style=" margin: 20 auto" > 
+            <input type="button" id='TogglelNav' value="Start Nav" style="background-color:#ccff99" onClick="toggle_nav(this, 'NavMenu')"/> 
+        </div>
+    </div>
+
+
+  </div>
+</body>
+</html>

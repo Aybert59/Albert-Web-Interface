@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+
+    <title>Albert</title>
+    <link rel="stylesheet" type="text/css" href="index.css?v3" />
+
+    <script src="http://code.jquery.com/jquery-1.11.3.min.js"></script>
+    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/eventemitter2@6.4.9/lib/eventemitter2.min.js"></script>
+    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/roslib@1/build/roslib.min.js"></script>
+
+    <script src="https://code.highcharts.com/highcharts.js"></script>
+    <script src="https://code.highcharts.com/highcharts-more.js"></script>
+    <script src="https://code.highcharts.com/modules/exporting.js"></script>
+    <script src="https://code.highcharts.com/modules/export-data.js"></script>
+    <script src="https://code.highcharts.com/modules/accessibility.js"></script>
+
+
+    <script type="text/javascript" type="text/javascript">
+
+    var VoltMeter;
+    var LidarDisplay;
+    var LidareRefresh = true;
+    var LidarZoom = false;
+    var WindRose;
+
+    // Connecting to ROS
+    // -----------------
+
+    var ros = new ROSLIB.Ros({
+        url : 'ws://192.168.1.76:9090'
+    });
+
+    ros.on('connection', function() {
+        console.log('Connected to websocket server.');
+    });
+
+    ros.on('error', function(error) {
+        console.log('Error connecting to websocket server: ', error);
+    });
+
+    ros.on('close', function() {
+        console.log('Connection to websocket server closed.');
+    });
+
+    // Publishing a Topic
+    // ------------------
+
+    /*
+    var cmdVel = new ROSLIB.Topic({
+        ros : ros,
+        name : '/cmd_vel',
+        messageType : 'geometry_msgs/Twist'
+    });
+
+    var twist = new ROSLIB.Message({
+        linear : {
+        x : 0.1,
+        y : 0.2,
+        z : 0.3
+        },
+        angular : {
+        x : -0.1,
+        y : -0.2,
+        z : -0.3
+        }
+    });
+    cmdVel.publish(twist);
+    */
+
+    // Subscribing to a Topic
+    // ----------------------
+    /*
+    var listener = new ROSLIB.Topic({
+        ros : ros,
+        name : '/listener',
+        messageType : 'std_msgs/String'
+    });
+
+    listener.subscribe(function(message) {
+        console.log('Received message on ' + listener.name + ': ' + message.data);
+        listener.unsubscribe();
+    });
+    */
+
+    var VoltListener = new ROSLIB.Topic({
+        ros : ros,
+        name : '/voltage',
+        messageType : 'std_msgs/Float32'
+    });
+
+    VoltListener.subscribe(function(message) {
+        VoltUpdate(message)
+    });
+    
+    var LidarListener = new ROSLIB.Topic({
+        ros : ros,
+        name : '/AlbertScan',
+        //messageType : 'sensor_msgs/LaserScan'
+        messageType : 'laser_avoidance/AlbertScan'
+    });
+
+    LidarListener.subscribe(function(message) {
+        LidarUpdate(message)
+    });
+    
+    var MagListener = new ROSLIB.Topic({
+        ros : ros,
+        name : '/mag/mag_raw',
+        messageType : 'sensor_msgs/MagneticField'
+    });
+
+    MagListener.subscribe(function(message) {
+        MagUpdate(message)
+    });
+
+    var ImuListener = new ROSLIB.Topic({
+        ros : ros,
+        name : '/imu/data',
+        messageType : 'sensor_msgs/Imu'
+    });
+
+    ImuListener.subscribe(function(message) {
+        ImuUpdate(message)
+    });
+
+    // Calling a service
+    // -----------------
+
+    /*
+    var addTwoIntsClient = new ROSLIB.Service({
+        ros : ros,
+        name : '/add_two_ints',
+        serviceType : 'rospy_tutorials/AddTwoInts'
+    });
+
+    var request = new ROSLIB.ServiceRequest({
+        a : 1,
+        b : 2
+    });
+
+    addTwoIntsClient.callService(request, function(result) {
+        console.log('Result for service call on '
+        + addTwoIntsClient.name
+        + ': '
+        + result.sum);
+    });
+    */
+
+    // Getting and setting a param value
+    // ---------------------------------
+
+    /*
+    ros.getParams(function(params) {
+        console.log(params);
+    });
+
+    var maxVelX = new ROSLIB.Param({
+        ros : ros,
+        name : 'max_vel_y'
+    });
+
+    maxVelX.set(0.8);
+    maxVelX.get(function(value) {
+        console.log('MAX VAL: ' + value);
+    });
+    */
+
+        $( window ).load(function() {
+            VoltMeter = Highcharts.chart('AlbertVoltMeter', {
+                chart: {
+                    type: 'gauge', 
+                    plotBackgroundColor: {
+                            linearGradient: { x1: 0, y1: 0, x2: 0, y2: 1 },
+                            stops: [[0, '#aae17c'], [0.4, '#FFFFFF'], [1, '#aae17c'] ]
+                    },
+                    height: 120
+                },
+                title: { floating: false, verticalAlign: 'bottom', text: '<span style="font-size:10px">Voltage</span>' },
+                navigation: {
+                    buttonOptions: { enabled: false }
+                },
+                credits: { enabled: false },
+                pane: [{
+                    startAngle: -45, endAngle: 45,
+                    background: [{
+                        borderWidth: 0, outerRadius: '109%'
+                    }],
+                    center: ['50%', '170%'], size: 200
+                }],
+                yAxis: [{
+                    min: 9.5, max: 12.5, minorTickPosition: 'outside', tickPosition: 'outside',
+                    tickInterval: 1, tickWidth: 0,
+                    labels: {
+                        rotation: 'auto', distance: 15
+                    },
+                    plotBands: [{ from: 9.5, to: 10,
+                        color: '#F4FA58', innerRadius: '100%', outerRadius: '105%'
+                    }, { from: 10, to: 12,
+                        color: '#82FA58', innerRadius: '100%', outerRadius: '105%'
+                    },{ from: 12, to: 12.5,
+                        color: '#FA5858', innerRadius: '100%', outerRadius: '105%'
+                    }],
+                    pane: 0
+                }],
+                plotOptions: {
+                    gauge: {
+                        dataLabels: { enabled: false }, dial: { radius: '100%'}
+                    }
+                },
+                series: [{
+                    name: 'Input Voltage', data: [9], yAxis: 0,
+                    tooltip: {valueSuffix: 'V'},
+                    id: 'vlt'
+                }]
+            });
+
+            LidarDisplay = Highcharts.chart('AlbertLidar', {
+                chart: { polar: true, animation: false },
+                title: { text: 'Lidar view'},
+                subtitle: { text: 'real time refresh'},
+                credits: { enabled: false },
+                pane: {
+                    startAngle: -90, endAngle: 90, /* angle of the display widget */
+                    center: ['50%', '95%'], size: 300,
+                },
+                yAxis: {
+                    min: 0, softMax: 2, tickInterval: 1, 
+                },
+                xAxis : {
+                    min: -90 , max: 90, tickInterval: 10,
+                    labels: {format: '{value}°'                    },
+                    plotBands: [
+                        { from: -90, to: -30,
+                        color: '#eeeeee', innerRadius: '0%', outerRadius: '100%'
+                        },{ from: -30, to: -10,
+                            color: '#f7afc1', innerRadius: '0%', outerRadius: '100%'
+                        },{ from: -10, to: 10,
+                            color: '#bdf7af', innerRadius: '0%', outerRadius: '100%'
+                        },{ from: 10, to: 30,
+                            color: '#f7afc1', innerRadius: '0%', outerRadius: '100%'
+                        },{ from: 30, to: 90,
+                            color: '#eeeeee', innerRadius: '0%', outerRadius: '100%'
+                        }
+                ]
+                },
+                plotOptions: {
+                    series: {pointStart: 0, pointInterval: 1},
+                    column: {pointPadding: 0, groupPadding: 0}
+                },
+                series: [ {
+                    type: 'area',
+                    name: 'Free zone',
+                    data: [0],
+                    id: 'lidar'
+                }]
+                    
+            });
+
+            WindRose = Highcharts.chart('AlbertWindRose', {
+                chart: {polar: true},
+                title: {text: 'Orientation'},
+                subtitle: {text: 'IMU display'},
+                credits: { enabled: false },
+                pane: {startAngle: -20, id: 'windrose'},
+                xAxis: {
+                    tickInterval: 45,
+                    min: 0, max: 360,
+                    labels: {format: '{value}°'}
+                },
+                yAxis: {min: 0, max: 100},
+                plotOptions: {
+                    series: {
+                        pointStart: 0,
+                        pointInterval: 45,
+                        datalabel: false
+                    },
+                    column: {
+                        pointPadding: 0,
+                        groupPadding: 0
+                    }
+                },
+                series: [{
+                    type: 'area',
+                    name: 'Acceleration',
+                    data: [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+                    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+                    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+                    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+                    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+                    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+                    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+                    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+                    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+                    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+                    id: 'accel',
+                    }]
+                });
+
+        });
+
+        function VoltUpdate(message) {
+            var series = VoltMeter.get('vlt');
+            var point = series.points[0];
+
+            point.update(parseFloat(message.data));
+            series.show ();
+                                            
+            console.log('Received message on ' + VoltListener.name + ': ' + message.data);
+            VoltListener.unsubscribe();
+        }
+
+        /* modifier, publier un message depuis la fonction avoidance, avec seulement 90 points déjà travaillés 
+        là pour tester on prend un point sur 5 à peu près */
+        function LidarUpdate(message) {
+            if (LidareRefresh == false)
+            {
+                return;
+            }
+            var series = LidarDisplay.get('lidar');
+            
+            for (var i=0; i < message.ranges.length; i++)
+            {
+                series.removePoint (90-(i), false);
+                cell = message.ranges[i];
+                series.addPoint ([90-(i), cell], false);
+            }
+
+            series.animation = false;
+            series.show ();
+                           
+            /* à garder au moins pour les tests
+            le refresh live est bien aussi. Prévoir un bouton qui freeze la souscription ou qui la remet en live */
+            /* LidarListener.unsubscribe(); */
+        }
+
+        function MagUpdate(message) {
+            var x = message.magnetic_field.x;
+            var y = message.magnetic_field.y;
+
+            var a = Math.atan2(y,x) * 180 / Math.PI;
+
+            var pane = WindRose.get('windrose');
+            pane.update ({
+                startAngle: a,
+            })
+                                            
+            //console.log('Received mag info ' + x + ', ' + y + ', ' + a);
+            MagListener.unsubscribe();
+        }
+
+        function ImuUpdate(message) {
+            var x = message.linear_acceleration.x;
+            var y = message.linear_acceleration.y;
+
+            var a = Math.floor(Math.atan2(y,x) * 180 / Math.PI);
+            var v = Math.sqrt(x*x + y*y) *100;
+
+
+            console.log('Received imu info ' + x + ', ' + y + ', ' + a + ', ' + v);
+
+            var series = WindRose.get('accel');
+            var point = series.points[0];
+            point.update([a,v]);
+            series.show ();
+
+            ImuListener.unsubscribe();
+        }
+
+        $( document ).ready(function() {
+            // When the DOM is ready, but not yet fully displayed
+
+        });
+
+        function do_lidar_freeze (obj) {
+            if (LidareRefresh == true)
+            {
+                obj.style.background = '#f7afc1';
+                LidareRefresh = false;
+            }
+            else
+            {
+                obj.style.background = '#ccff99';
+                LidareRefresh = true;
+            }
+        }
+
+        function do_lidar_zoom (obj) {
+            if (LidarZoom == false)
+            {
+                obj.style.background = '#f7afc1';
+                LidarZoom = true;
+                LidarDisplay.yAxis[0].setExtremes(0,1);
+            }
+            else
+            {
+                obj.style.background = '#ccff99';
+                LidarZoom = false;
+                LidarDisplay.yAxis[0].setExtremes(0);
+            }
+        }
+
+      setInterval(function() {  
+        VoltListener.subscribe(function(message) {
+        VoltUpdate(message)
+        });
+      }, 30000); // each 30 seconds large enough
+    
+      setInterval(function() {  
+        MagListener.subscribe(function(message) {
+        MagUpdate(message)
+        });
+      }, 500); // each ,5 seconds ok for display, not too much ?
+    
+      setInterval(function() {  
+        ImuListener.subscribe(function(message) {
+        ImuUpdate(message)
+        });
+      }, 500); // each ,5 seconds ok for display, not too much ?
+    
+
+
+    </script>
+
+</head>
+
+<body>
+  
+
+  <div class="grid-container">
+
+    <div class="grid-header grid-item">
+        <h1 style="color:beige;text-align: center;">Albert Work in progress</h1>
+        <p>Check your Web Console for output.</p>
+    </div>
+
+    <div class="grid-left1 grid-item" id="AlbertWindRose" style="width: 500px; height: 300px; margin: 0 auto"> </div>
+
+
+    <div class="grid-center1 grid-item" id="AlbertVoltMeter" style="width: 200px; height: 200px; margin: 0 auto"> </div>
+
+    <div class="grid-right1 grid-sub-container"> 
+        <div class="grid-box1 grid-item" id="AlbertLidar" style="width: 500px; height: 300px; margin: 0 auto"> </div>
+        <div class="grid-box4 grid-item" id="AlbertLidarFreeze" style=" margin: 20 auto" > 
+                <input type="button" value="Freeze Display" id="LidarFreeze" style="background-color:#ccff99" onClick="do_lidar_freeze(this)"/> 
+        </div>
+        <div class="grid-box3 grid-item" id="AlbertLidarZoom" style=" margin: 20 auto" > 
+            <input type="button" value="Zoom" id="LidarFreeze" style="background-color:#ccff99" onClick="do_lidar_zoom(this)"/> 
+    </div>
+
+
+  </div>
+</body>
+</html>
