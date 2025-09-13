@@ -182,7 +182,7 @@
                 snapLink.onclick = function() {     
                     return false; }
             } else if (obj.value == 'none') {
-                canvas.src = 'file:///Users/olivier/yahboom/www/images/none.jpg';
+                canvas.src = 'images/none.jpg';
                 snapLink.onclick = function() {     
                     return false; }
             } else
@@ -209,16 +209,33 @@
 
 
         function do_select_obj_detect (obj, name) {
+            var url;
+
             console.log('selected model ' + obj.value);
             label = document.getElementById(name);
                         
             label.innerHTML = 'Model : ' + obj.value;
+            text_field = document.getElementById('ObjDetectresult');
 
+            
             if (obj.value == 'none') {
-                label = document.getElementById('ObjDetectresult');
-                label.value = 'No detection';
+                url = 'http://192.168.1.76:5000/stop_detection';
+            } else
+            {
+                url = 'http://192.168.1.76:5000/start_detection';
             }
+
             CurrentObjModel.set(obj.value);
+
+            
+            fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    text_field.value = data.message;
+                })
+                .catch(error => {
+                    console.error('Error fetching object detection:', error);
+                });
         }
 
         function do_cam_snapshot (obj, name) {
