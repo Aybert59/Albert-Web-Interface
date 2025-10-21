@@ -1,10 +1,6 @@
 // the navigation interface
 
- var trip_infoListener = new ROSLIB.Topic({
-    ros : ros,
-    name : '/tripInfo',
-    messageType : 'std_msgs/String'
-});
+
 
 var tripTopic = new ROSLIB.Topic({
     ros : ros,
@@ -13,27 +9,6 @@ var tripTopic = new ROSLIB.Topic({
 });
 
 
-trip_infoListener.subscribe(function(msg) {
-    if (msg.data == 'end') {
-        document.getElementById('TogglelNav').value = 'Start Nav';
-        document.getElementById('TogglelNav').style="background-color:#ccff99"
-        document.getElementById('NavTargetLabel').innerText = ' Next Target : None ';
-    }
-    else {      
-        document.getElementById('NavTargetLabel').innerText = msg.data;
-    }
-})  
-
-function navigate_to (x, y, z) {
-    var tripMsg = new ROSLIB.Message({
-        trip: "{\"trip\":{\"name\":\"spot\",\"speed\":100,\"poses\":[{\"name\":\"point\",\"x\":" + x + ",\"y\":" + y + ",\"z\":" + z + "}]}}"
-    });
-    tripTopic.publish(tripMsg);
-
-    document.getElementById('TogglelNav').value = 'Cancel Nav';
-    document.getElementById('TogglelNav').style="background-color:#f7afc1"
-    CurrentGoal = true;
-}
 
 function toggle_nav (obj, navbutton) {
     if (CurrentGoal == true )
@@ -76,27 +51,7 @@ function toggle_nav (obj, navbutton) {
 function do_change_maxvel(obj) {
     pct = obj.value / 100.0;
 
-    /*
-    var request = new ROSLIB.ServiceRequest({
-        config: {
-            bools: [
-                // {name: '', value: false}
-            ],
-            ints: [
-                // {name: '', value: 0}
-            ],
-            strs: [
-                // {name: '', value: ''}
-            ],
-            doubles: [
-                {name: 'max_vel_trans', value: pct},
-            ],
-            groups: [
-                // {name: '', state: false, id: 0, parent: 0}
-            ]
-        }
-    });
-*/
+
     var request = new ROSLIB.ServiceRequest({
         config: {
             doubles: [
@@ -115,11 +70,3 @@ function do_change_maxvel(obj) {
     });
 }
 
-function do_select_trip (obj, navbutton) {
-    let file = obj.files[0];
-    console.log('selected : ' + file.name);
-    if (file != null) {
-        toggle_nav(document.getElementById(navbutton), navbutton);
-    }
-    
-}

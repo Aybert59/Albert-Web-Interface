@@ -61,7 +61,7 @@ h1 {
   grid-area: box6;
 }
 
-.grid-box6 { 
+.grid-box7 { 
   grid-area: box7;
 }
 
@@ -92,9 +92,3 @@ h1 {
     display: block;
 }
 
-.vertical-range {
-  writing-mode: bt-lr; /* IE */
-  -webkit-appearance: slider-vertical; /* WebKit */
-  width: 8px;
-  height: 200px;
-}
