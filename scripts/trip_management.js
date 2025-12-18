@@ -3,19 +3,26 @@ var tripListClient = new ROSLIB.Service({
     name : '/ListTrips',
     serviceType : 'mcp/ListTrips'
   });
+var tripControlClient = new ROSLIB.Service({
+    ros : ros,
+    name : '/ControlTrip',
+    serviceType : 'mcp/ControlTrip'
+  });
 
 
-  var doTripClient = new ROSLIB.ActionClient({
+var doTripClient = new ROSLIB.ActionClient({
     ros : ros,
     serverName : '/doTrip',
     actionName : 'mcp/DoTripAction'
   });
 
+var goal = null;
+
 function trip_action (message)
 {
     document.getElementById('NavTargetLabel').innerText = "starting...";
 
-    var goal = new ROSLIB.Goal({
+    goal = new ROSLIB.Goal({
         actionClient : doTripClient,
         goalMessage : {
             // same as below in update_trip_menu
@@ -69,7 +76,26 @@ function do_pause_trip ()
 
 function do_stop_trip ()
 {
-    var message = 'stop';
+    console.log('cancelling current trip');
+    if (goal == null) {
+        console.log('no trip in progress');
+        return;
+    }
+    // send a preempt request to the action server
+    tripControlClient.callService(
+        new ROSLIB.ServiceRequest({
+            control : 0
+        }),
+        function(result) {
+            console.log('Result for service call on ' + tripControlClient.name + ': ' + result.status);
+            if (result.status == 1) {
+                console.log('Trip cancelled successfully');
+                    goal = null;
+                    document.getElementById('NavTargetLabel').innerText = "stopped";
+            }
+        }
+    );
+
     //trip_action(message);
 }
 
