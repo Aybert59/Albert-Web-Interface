@@ -60,18 +60,51 @@ function do_select_trip (obj)
 
 function do_start_trip ()
 {
-    select = document.getElementById('TripsMenu');
-    if (select.value == 'none') {
-        console.log('no trip selected');
+    //select = document.getElementById('TripsMenu');
+    //if (select.value == 'none') {
+    //    console.log('no trip selected');
+    //    return;
+    //}
+    //do_select_trip(select);
+    console.log('restarting current trip');
+    if (goal == null) {
+        console.log('no trip in progress');
         return;
     }
-    do_select_trip(select);
+    tripControlClient.callService(
+        new ROSLIB.ServiceRequest({
+            control : 2 // resume
+        }),
+        function(result) {
+            console.log('Result for service call on ' + tripControlClient.name + ': ' + result.status);
+            if (result.status == 1) {
+                console.log('Trip resumed successfully');
+                document.getElementById('NavTargetLabel').innerText = "resumed";
+            }
+        }
+    );
 }
 
 function do_pause_trip ()
 {
-    var message = 'pause';
-    //trip_action(message);
+    console.log('pausing current trip');
+    if (goal == null) {
+        console.log('no trip in progress');
+        return;
+    }
+    // send a pause request to the action server
+    tripControlClient.callService(
+        new ROSLIB.ServiceRequest({
+            control : 1 // pause
+        }),
+        function(result) {
+            console.log('Result for service call on ' + tripControlClient.name + ': ' + result.status);
+            if (result.status == 1) {
+                console.log('Trip paused successfully');
+                document.getElementById('NavTargetLabel').innerText = "paused";
+            }
+        }
+    );
 }
 
 function do_stop_trip ()
@@ -92,11 +125,10 @@ function do_stop_trip ()
                 console.log('Trip cancelled successfully');
                     goal = null;
                     document.getElementById('NavTargetLabel').innerText = "stopped";
+                    document.getElementById('TripsMenu').selectedIndex = 0;
             }
         }
     );
-
-    //trip_action(message);
 }
 
 function update_trip_menu ()
